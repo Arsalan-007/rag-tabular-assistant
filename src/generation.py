@@ -21,12 +21,28 @@ from __future__ import annotations
 
 import contextlib
 import json
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from typing import Protocol
 
 from config import settings
+
+# Substrings that mark a transient, worth-retrying API failure (rate limit /
+# overloaded / brief 5xx). Anything else propagates immediately.
+_TRANSIENT = ("429", "500", "502", "503", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "overloaded")
+
+
+def _retry_transient(fn, attempts: int = 3, base_delay: float = 1.0):
+    """Call fn(); on a transient error retry with exponential backoff."""
+    for i in range(attempts):
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001 - re-raised below if not transient / out of tries
+            if i == attempts - 1 or not any(t in str(e) for t in _TRANSIENT):
+                raise
+            time.sleep(base_delay * (2**i))
 
 
 class Generator(Protocol):
@@ -158,15 +174,27 @@ class GeminiGenerator:
     def generate(self, prompt: str, stream: bool = False) -> str | Iterator[str]:
         client = self._get_client()
         if not stream:
-            resp = client.models.generate_content(
-                model=self.model, contents=prompt, config=self._config()
+            resp = _retry_transient(
+                lambda: client.models.generate_content(
+                    model=self.model, contents=prompt, config=self._config()
+                )
             )
             return resp.text or ""
 
         def _iter() -> Iterator[str]:
-            for chunk in client.models.generate_content_stream(
-                model=self.model, contents=prompt, config=self._config()
-            ):
+            # Retry only establishing the stream (the HTTP call fires on the
+            # first next()); once tokens flow a mid-stream failure propagates.
+            def _start():
+                it = client.models.generate_content_stream(
+                    model=self.model, contents=prompt, config=self._config()
+                )
+                first = next(it, None)
+                return it, first
+
+            it, first = _retry_transient(_start)
+            if first is not None and first.text:
+                yield first.text
+            for chunk in it:
                 if chunk.text:
                     yield chunk.text
 

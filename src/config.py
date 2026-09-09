@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     ollama_model: str = "mistral"
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-flash-lite-latest"
 
     # ── Embeddings ──────────────────────────────────────────────────────
     embed_model: str = "BAAI/bge-small-en-v1.5"

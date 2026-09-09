@@ -58,7 +58,8 @@ class Hit:
     chunk_index: int
     score: float  # final-stage relevance in [0, 1]; also the sort key
     dense_similarity: float | None = None  # cosine vs query embedding, if dense-retrieved
-    stage_scores: dict = field(default_factory=dict)  # {"dense","bm25_rank","rrf","rerank"}
+    sources: list = field(default_factory=list)  # which retrievers surfaced it: "dense" / "bm25"
+    stage_scores: dict = field(default_factory=dict)  # {"dense","rrf","rerank"}
 
 
 @dataclass
@@ -206,6 +207,7 @@ class Retriever:
         best_dense = max(dense_sims.values()) if dense_sims else 0.0
 
         # sparse + fuse (hybrid only)
+        sparse_ids: list[str] = []
         if mode == "hybrid":
             s0 = time.perf_counter()
             sparse_ids = self._sparse(query, fetch_k)
@@ -216,6 +218,8 @@ class Retriever:
         else:
             candidate_ids = dense_ids[:fetch_k]
             rrf_scores = {}
+
+        dense_set, sparse_set = set(dense_ids), set(sparse_ids)
 
         # rerank (optional) or take the fused/dense head
         if do_rerank:
@@ -253,6 +257,10 @@ class Retriever:
                     dense_similarity=(
                         round(dense_sims[doc_id], 4) if doc_id in dense_sims else None
                     ),
+                    sources=(
+                        (["dense"] if doc_id in dense_set else [])
+                        + (["bm25"] if doc_id in sparse_set else [])
+                    ) or ["dense"],
                     stage_scores={
                         "dense": round(dense_sims[doc_id], 4) if doc_id in dense_sims else None,
                         "rrf": round(rrf_scores[doc_id], 5) if doc_id in rrf_scores else None,
