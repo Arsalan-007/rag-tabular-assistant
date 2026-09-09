@@ -37,6 +37,7 @@ import chromadb
 from sentence_transformers import CrossEncoder, SentenceTransformer
 
 from config import BGE_QUERY_PREFIX, CHROMA_DIR, COLLECTION_NAME, settings
+from store import ensure_store
 
 _WORD = re.compile(r"[a-z0-9]+")
 
@@ -90,6 +91,7 @@ class Retriever:
 
     def _get_collection(self):
         if self._collection is None:
+            ensure_store()  # extract data/chroma.tar.gz on first use if needed
             client = chromadb.PersistentClient(path=str(CHROMA_DIR))
             self._collection = client.get_collection(COLLECTION_NAME)
         return self._collection

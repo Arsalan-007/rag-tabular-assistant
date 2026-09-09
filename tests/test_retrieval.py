@@ -9,14 +9,20 @@ from __future__ import annotations
 
 import pytest
 
-from config import CHROMA_DIR, settings
+from config import settings
 from retrieval import Retriever, _tokenize
+from store import TARBALL, ensure_store, store_is_materialised
 
-STORE_PRESENT = (CHROMA_DIR / "chroma.sqlite3").exists() and (
-    CHROMA_DIR / "chroma.sqlite3"
-).stat().st_size > 1000  # an LFS pointer file is ~130 bytes
+# The store ships as a tarball; extract it if a real one isn't unpacked yet.
+_STORE_OK = False
+if store_is_materialised() or (TARBALL.exists() and TARBALL.stat().st_size > 10_000):
+    try:
+        ensure_store()
+        _STORE_OK = store_is_materialised()
+    except Exception:
+        _STORE_OK = False
 
-needs_store = pytest.mark.skipif(not STORE_PRESENT, reason="Chroma store not materialised (Git LFS)")
+needs_store = pytest.mark.skipif(not _STORE_OK, reason="vector store unavailable (Git LFS tarball missing)")
 
 
 # ── pure functions ──────────────────────────────────────────────────────

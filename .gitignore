@@ -1,8 +1,9 @@
 # PDFs are re-downloadable from arXiv on `make ingest`; don't bloat the repo.
 data/pdfs/*.pdf
 
-# The Chroma store IS committed (via Git LFS, see .gitattributes) so it is
-# deliberately NOT ignored here.
+# The vector store ships as data/chroma.tar.gz (Git LFS); the extracted
+# directory is a runtime artifact (Chroma mutates its SQLite on every query).
+data/chroma/
 
 # Environments
 venv/

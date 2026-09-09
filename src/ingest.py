@@ -262,11 +262,17 @@ def main():
     ap = argparse.ArgumentParser(description="Ingest the frozen tabular-DL corpus into a RAG store.")
     ap.add_argument("--reset", action="store_true",
                     help="wipe the vector store before ingesting")
+    ap.add_argument("--no-pack", action="store_true",
+                    help="skip repacking data/chroma.tar.gz afterwards")
     args = ap.parse_args()
 
     t0 = time.time()
     fetched, missing = fetch_papers()
     count = build_store(fetched, reset=args.reset)
+
+    if not args.no_pack:
+        from store import pack_store
+        pack_store()
 
     # --- final report: what made it in, what didn't -----------------------
     print("\n" + "=" * 68)

@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 PY ?= python
 
-.PHONY: help install install-dev ingest app eval eval-ablation eval-judge lint fmt test cov clean
+.PHONY: help install install-dev store ingest app eval eval-ablation eval-judge lint fmt test cov clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -13,7 +13,10 @@ install:  ## Install runtime dependencies
 install-dev:  ## Install runtime + dev dependencies, editable package
 	$(PY) -m pip install -r requirements-dev.txt && $(PY) -m pip install -e .
 
-ingest:  ## Rebuild the vector store from the frozen corpus (src/seed_papers.py)
+store:  ## Extract the shipped vector store (data/chroma.tar.gz -> data/chroma/)
+	$(PY) src/store.py
+
+ingest:  ## Rebuild the vector store from the frozen corpus, then repack the tarball
 	$(PY) src/ingest.py --reset
 
 app:  ## Launch the Streamlit UI
