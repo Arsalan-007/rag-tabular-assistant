@@ -174,18 +174,30 @@ def _parse_judge(raw: str):
 def evaluate_faithfulness(retriever: Retriever):
     import rag  # local import: only needed with --judge, pulls in the generator
 
+    # Two generate() calls per question. Gemini's free tier is ~15 req/min, so
+    # pace to stay under it; Ollama is local and needs no throttle.
+    min_interval = (60.0 / 13) if config.settings.generator == "gemini" else 0.0
+    last = [0.0]
+
+    def _paced_generate(prompt: str) -> str:
+        wait = min_interval - (time.monotonic() - last[0])
+        if wait > 0:
+            time.sleep(wait)
+        out = rag.generate(prompt, stream=False)
+        last[0] = time.monotonic()
+        return out
+
     scores = []
     for item in EVAL_QUESTIONS:
         res = retriever.retrieve(item["q"])
-        answer = rag.generate(rag.build_prompt(item["q"], res.hits), stream=False)
+        answer = _paced_generate(rag.build_prompt(item["q"], res.hits))
         sources = "\n\n".join(f"[{i}] {h.text}" for i, h in enumerate(res.hits, 1))
-        raw = rag.generate(
-            JUDGE_PROMPT.replace("{sources}", sources).replace("{answer}", answer),
-            stream=False,
+        raw = _paced_generate(
+            JUDGE_PROMPT.replace("{sources}", sources).replace("{answer}", answer)
         )
-        score, reason = _parse_judge(raw)
+        score, _ = _parse_judge(raw)
         scores.append(score)
-        print(f"  [{score or '?'}/5] {item['q'][:64]}")
+        print(f"  [{score or '?'}/5] {item['q'][:64]}", flush=True)
     ok = [s for s in scores if s is not None]
     return (statistics.mean(ok) if ok else None), len(ok), len(scores)
 

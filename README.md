@@ -12,6 +12,8 @@ and which retriever surfaced it.
 **Live demo:** _(Streamlit Community Cloud link goes here)_
 · **[Evaluation results](eval/results.md)**
 
+![The Streamlit UI](docs/img/app.png)
+
 ```
 question ─▶ embed (bge-small, query prefix) ─▶ dense search (Chroma)  ─┐
            tokenize ─────────────────────────▶ BM25 (rank-bm25)       ├─▶ RRF fuse

@@ -12,6 +12,7 @@ passage, per-stage latency -- because making retrieval legible is the point.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 import time
@@ -19,18 +20,22 @@ from pathlib import Path
 
 import streamlit as st
 
+_HERE = Path(__file__).resolve().parent
+
 # --- Make sibling modules importable no matter the working directory --------
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(_HERE))
 
 # --- Bridge Streamlit secrets -> env BEFORE config is imported --------------
 # On Streamlit Cloud the API key + provider live in the app's Secrets, not the
-# process env that pydantic-settings reads.
-for _key in ("GENERATOR", "GEMINI_API_KEY", "GEMINI_MODEL", "RETRIEVAL_MODE", "RERANK"):
-    try:
-        if _key in st.secrets:
-            os.environ.setdefault(_key, str(st.secrets[_key]))
-    except Exception:
-        pass
+# process env that pydantic-settings reads. Only consult st.secrets when a
+# secrets file actually exists, so a local run without one stays quiet.
+_SECRET_KEYS = ("GENERATOR", "GEMINI_API_KEY", "GEMINI_MODEL", "RETRIEVAL_MODE", "RERANK")
+_secret_files = (Path.home() / ".streamlit/secrets.toml", _HERE.parent / ".streamlit/secrets.toml")
+if any(p.exists() for p in _secret_files):
+    with contextlib.suppress(Exception):
+        for _key in _SECRET_KEYS:
+            if _key in st.secrets and _key not in os.environ:
+                os.environ[_key] = str(st.secrets[_key])
 
 import rag  # noqa: E402
 from config import settings  # noqa: E402

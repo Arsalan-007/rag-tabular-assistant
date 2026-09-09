@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -33,16 +34,23 @@ from config import settings
 # overloaded / brief 5xx). Anything else propagates immediately.
 _TRANSIENT = ("429", "500", "502", "503", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "overloaded")
 
+# Gemini 429s carry the wait as "Please retry in 12.7s" and "retryDelay": "12s".
+_RETRY_HINT = re.compile(r"retry(?:Delay)?[\"']?\s*[:=]?\s*(?:in\s+)?[\"']?(\d+(?:\.\d+)?)\s*s", re.I)
 
-def _retry_transient(fn, attempts: int = 3, base_delay: float = 1.0):
-    """Call fn(); on a transient error retry with exponential backoff."""
+
+def _retry_transient(fn, attempts: int = 5, base_delay: float = 2.0, max_delay: float = 45.0):
+    """Call fn(); on a transient error retry, honouring a server-suggested delay
+    when present, otherwise exponential backoff."""
     for i in range(attempts):
         try:
             return fn()
         except Exception as e:  # noqa: BLE001 - re-raised below if not transient / out of tries
-            if i == attempts - 1 or not any(t in str(e) for t in _TRANSIENT):
+            msg = str(e)
+            if i == attempts - 1 or not any(t in msg for t in _TRANSIENT):
                 raise
-            time.sleep(base_delay * (2**i))
+            hint = _RETRY_HINT.search(msg)
+            wait = (float(hint.group(1)) + 1.0) if hint else base_delay * (2**i)
+            time.sleep(min(wait, max_delay))
 
 
 class Generator(Protocol):

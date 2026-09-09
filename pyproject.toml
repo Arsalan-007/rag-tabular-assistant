@@ -39,7 +39,7 @@ Repository = "https://github.com/Arsalan-007/rag-tabular-assistant"
 [tool.setuptools]
 package-dir = { "" = "src" }
 py-modules = [
-    "config", "seed_papers", "ingest",
+    "config", "seed_papers", "store", "ingest",
     "retrieval", "generation", "rag",
     "eval_questions", "evaluate", "app",
 ]

@@ -20,7 +20,7 @@ ingest:  ## Rebuild the vector store from the frozen corpus, then repack the tar
 	$(PY) src/ingest.py --reset
 
 app:  ## Launch the Streamlit UI
-	streamlit run src/app.py
+	$(PY) -m streamlit run src/app.py
 
 eval:  ## Retrieval metrics (hit-rate@k, MRR) for the configured pipeline
 	$(PY) src/evaluate.py
