@@ -38,7 +38,11 @@ Repository = "https://github.com/Arsalan-007/rag-tabular-assistant"
 # a proper package split (rag_tabular/) is a later pass.
 [tool.setuptools]
 package-dir = { "" = "src" }
-py-modules = ["rag", "ingest", "eval", "eval_questions", "seed_papers"]
+py-modules = [
+    "config", "seed_papers", "ingest",
+    "retrieval", "generation", "rag",
+    "eval_questions", "evaluate", "app",
+]
 
 [tool.ruff]
 line-length = 100

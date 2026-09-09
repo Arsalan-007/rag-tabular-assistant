@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true  # materialise the committed Chroma store
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # bge-small (~130 MB) + bge-reranker-base (~1.1 GB) are downloaded once
+      # and cached across runs.
+      - name: Cache HuggingFace models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-bge-small-reranker-base
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e .
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Test
+        run: pytest -q --cov=src --cov-report=term-missing
+
+      # Fast retrieval sanity check on the real store (dense only -> no reranker
+      # forward passes, keeps CI quick). Fails if hit@10 regresses badly.
+      - name: Retrieval smoke eval
+        env:
+          RETRIEVAL_MODE: dense
+          RERANK: "false"
+        run: |
+          python src/evaluate.py --k 5 10 --json /tmp/eval.json
+          python - <<'PY'
+          import json, sys
+          m = json.load(open("/tmp/eval.json"))["results"][0]
+          hit10 = m["hit_rate"]["10"]
+          print(f"dense hit@10 = {hit10}")
+          sys.exit(0 if hit10 >= 0.85 else 1)
+          PY
