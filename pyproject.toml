@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rag-tabular-assistant"
+version = "0.2.0"
+description = "Local retrieval-augmented Q&A over the tabular deep-learning vs gradient-boosted-trees literature"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Arsalan" }]
+keywords = ["rag", "retrieval", "reranking", "hybrid-search", "tabular", "evaluation"]
+
+dependencies = [
+    "arxiv>=2.1.0",
+    "pymupdf>=1.24.0",
+    "sentence-transformers>=3.0.0",
+    "chromadb>=0.5.0",
+    "rank-bm25>=0.2.2",
+    "streamlit>=1.36.0",
+    "python-dotenv>=1.0.1",
+    "pydantic-settings>=2.3.0",
+    "google-genai>=0.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.5.0",
+]
+
+[project.urls]
+Repository = "https://github.com/Arsalan-007/rag-tabular-assistant"
+
+# Flat module layout under src/. `py-modules` is kept in sync as modules land;
+# a proper package split (rag_tabular/) is a later pass.
+[tool.setuptools]
+package-dir = { "" = "src" }
+py-modules = ["rag", "ingest", "eval", "eval_questions", "seed_papers"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # long lines are tolerated in prompt/docstring blocks
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"

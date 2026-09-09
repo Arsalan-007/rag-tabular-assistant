@@ -1,4 +1,15 @@
-arxiv>=2.1.0
-pymupdf>=1.24.0
-sentence-transformers>=3.0.0
-chromadb>=0.5.0
+# Runtime dependencies, pinned to tested versions.
+# Dev/test tooling lives in requirements-dev.txt.
+#
+# Streamlit Community Cloud installs from this file. torch is pulled in
+# (CPU build) by sentence-transformers; no GPU is used anywhere.
+
+arxiv==4.0.0
+pymupdf==1.28.0
+sentence-transformers==5.6.0
+chromadb==1.5.9
+rank-bm25==0.2.2
+streamlit==1.63.0
+python-dotenv==1.0.0
+pydantic-settings==2.12.0
+google-genai==2.22.0

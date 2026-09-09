@@ -2,15 +2,18 @@
 Ingestion pipeline for the tabular-DL research assistant.
 
 Stages:
-    1. FETCH    download seed papers (by arXiv ID) + optional keyword expansion
+    1. FETCH    download every paper in the frozen corpus (by arXiv ID)
     2. PARSE    extract text from each PDF (PyMuPDF), strip reference lists
     3. CHUNK    split into overlapping, section-aware chunks
     4. EMBED    encode chunks with bge-small (batched, CPU-friendly)
     5. STORE    persist chunks + metadata to a local Chroma collection
 
-Run:  python src/ingest.py            # full pipeline, resumable
-      python src/ingest.py --no-expand  # seeds only, skip keyword expansion
-      python src/ingest.py --reset       # wipe the vector store and re-ingest
+Run:  python src/ingest.py          # full pipeline, resumable
+      python src/ingest.py --reset   # wipe the vector store and re-ingest
+
+The corpus is the frozen, hand-checked list in src/seed_papers.py -- there is
+no keyword expansion (an earlier version had it; it polluted the store with
+off-topic papers).
 
 Design notes:
     - Every stage is idempotent: PDFs and embeddings already present are skipped,
@@ -32,12 +35,7 @@ import fitz  # PyMuPDF
 import chromadb
 from sentence_transformers import SentenceTransformer
 
-from seed_papers import (
-    SEED_PAPERS,
-    NON_ARXIV,
-    EXPANSION_QUERIES,
-    EXPANSION_TARGET,
-)
+from seed_papers import SEED_PAPERS, NON_ARXIV
 
 # --- Paths -----------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent.parent
@@ -56,9 +54,12 @@ MIN_CHUNK_CHARS = 200   # drop tiny fragments (captions, stray headers)
 # ==========================================================================
 # STAGE 1 — FETCH
 # ==========================================================================
-def fetch_papers(expand: bool):
-    """Download seed papers by ID, then optionally expand via keyword search.
-    Returns (fetched_meta: dict[id -> metadata], missing_ids: list)."""
+def fetch_papers():
+    """Download every paper in the frozen corpus (src/seed_papers.py) by arXiv ID.
+
+    No keyword expansion: the corpus is a hand-checked list. Returns
+    (fetched_meta: dict[id -> metadata], missing_ids: list).
+    """
     PDF_DIR.mkdir(parents=True, exist_ok=True)
     client = arxiv.Client(page_size=50, delay_seconds=3, num_retries=3)
 
@@ -66,8 +67,7 @@ def fetch_papers(expand: bool):
     missing = []
     seed_ids = [pid for pid, _ in SEED_PAPERS]
 
-    # --- seed papers by explicit ID ---
-    print(f"\n[FETCH] Requesting {len(seed_ids)} seed papers by arXiv ID...")
+    print(f"\n[FETCH] Requesting {len(seed_ids)} corpus papers by arXiv ID...")
     try:
         results = list(client.results(arxiv.Search(id_list=seed_ids)))
     except Exception as e:
@@ -80,33 +80,10 @@ def fetch_papers(expand: bool):
         returned_ids.add(pid)
         fetched[pid] = _download_and_meta(r, pid)
 
-    # any seed ID arXiv didn't return
+    # any corpus ID arXiv didn't return
     for pid in seed_ids:
         if pid not in returned_ids:
             missing.append(pid)
-
-    # --- optional keyword expansion up to EXPANSION_TARGET ---
-    if expand and len(fetched) < EXPANSION_TARGET:
-        print(f"\n[FETCH] Expanding via keyword search "
-              f"(have {len(fetched)}, target {EXPANSION_TARGET})...")
-        for query in EXPANSION_QUERIES:
-            if len(fetched) >= EXPANSION_TARGET:
-                break
-            search = arxiv.Search(
-                query=query,
-                max_results=25,
-                sort_by=arxiv.SortCriterion.Relevance,
-            )
-            try:
-                for r in client.results(search):
-                    if len(fetched) >= EXPANSION_TARGET:
-                        break
-                    pid = r.get_short_id().split("v")[0]
-                    if pid in fetched:
-                        continue
-                    fetched[pid] = _download_and_meta(r, pid)
-            except Exception as e:
-                print(f"[FETCH]   query '{query}' failed: {e}")
 
     return fetched, missing
 
@@ -288,15 +265,13 @@ def build_store(fetched_meta, reset: bool):
 # ORCHESTRATION
 # ==========================================================================
 def main():
-    ap = argparse.ArgumentParser(description="Ingest tabular-DL papers into a RAG store.")
-    ap.add_argument("--no-expand", action="store_true",
-                    help="fetch only the curated seed list, skip keyword expansion")
+    ap = argparse.ArgumentParser(description="Ingest the frozen tabular-DL corpus into a RAG store.")
     ap.add_argument("--reset", action="store_true",
                     help="wipe the vector store before ingesting")
     args = ap.parse_args()
 
     t0 = time.time()
-    fetched, missing = fetch_papers(expand=not args.no_expand)
+    fetched, missing = fetch_papers()
     count = build_store(fetched, reset=args.reset)
 
     # --- final report: what made it in, what didn't -----------------------

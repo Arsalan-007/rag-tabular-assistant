@@ -1,0 +1,4 @@
+# The prebuilt Chroma vector store is committed via Git LFS so a fresh clone
+# (and CI, and the deployed demo) can run retrieval + eval without a rebuild.
+# Rebuild it any time with `make ingest`.
+data/chroma/** filter=lfs diff=lfs merge=lfs -text

@@ -1,6 +1,24 @@
+# PDFs are re-downloadable from arXiv on `make ingest`; don't bloat the repo.
 data/pdfs/*.pdf
-data/chroma/
+
+# The Chroma store IS committed (via Git LFS, see .gitattributes) so it is
+# deliberately NOT ignored here.
+
+# Environments
 venv/
+.venv/
 __pycache__/
 *.pyc
+*.egg-info/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets / local config
+.env
+.streamlit/secrets.toml
+
 .DS_Store
