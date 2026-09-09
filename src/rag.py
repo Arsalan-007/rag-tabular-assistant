@@ -31,20 +31,73 @@ the passages. When you use a passage, cite it inline by its number, like [1] or 
 [2]. If the passages do not contain enough information to answer, say so plainly \
 instead of guessing. Be precise and concise; prefer the papers' own terminology."""
 
+# A conversation turn: (user question, assistant answer).
+Turn = tuple[str, str]
+
+_CONDENSE_PROMPT = """Given a conversation and a follow-up question, rewrite the \
+follow-up as a STANDALONE question that can be understood without the \
+conversation. Resolve pronouns and references ("it", "that method", "the second \
+one"). Do NOT answer it. If it is already standalone, return it unchanged.
+
+CONVERSATION:
+{history}
+
+FOLLOW-UP: {question}
+
+STANDALONE QUESTION:"""
+
 
 # --- prompt assembly -----------------------------------------------------
-def build_prompt(question: str, hits: list[Hit]) -> str:
+def _format_context(hits: list[Hit]) -> str:
     blocks = []
     for i, h in enumerate(hits, 1):
         source = f"{h.title} ({h.year}, arXiv:{h.arxiv_id})"
         blocks.append(f'[{i}] From "{source}":\n{h.text}')
-    context = "\n\n".join(blocks)
+    return "\n\n".join(blocks)
+
+
+def build_prompt(question: str, hits: list[Hit]) -> str:
     return (
         f"{SYSTEM_PROMPT}\n\n"
-        f"=== CONTEXT PASSAGES ===\n{context}\n\n"
+        f"=== CONTEXT PASSAGES ===\n{_format_context(hits)}\n\n"
         f"=== QUESTION ===\n{question}\n\n"
         f"=== ANSWER ===\n"
     )
+
+
+def build_chat_prompt(question: str, history: list[Turn], hits: list[Hit]) -> str:
+    """Prompt for a follow-up turn: system + prior turns + fresh passages.
+
+    The passages are re-retrieved for this turn; earlier answers are context for
+    continuity only, and every claim must still be grounded in the numbered
+    passages below (which are renumbered fresh each turn).
+    """
+    if not history:
+        return build_prompt(question, hits)
+    convo = "\n\n".join(f"User: {q}\nAssistant: {a}" for q, a in history[-4:])
+    return (
+        f"{SYSTEM_PROMPT}\n\n"
+        "This is a follow-up in an ongoing conversation. Use the conversation "
+        "for context, but ground every claim in the numbered CONTEXT PASSAGES "
+        "below — they were retrieved for this follow-up and are numbered fresh.\n\n"
+        f"=== CONVERSATION SO FAR ===\n{convo}\n\n"
+        f"=== CONTEXT PASSAGES ===\n{_format_context(hits)}\n\n"
+        f"=== FOLLOW-UP ===\n{question}\n\n"
+        f"=== ANSWER ===\n"
+    )
+
+
+def condense_question(question: str, history: list[Turn]) -> str:
+    """Rewrite a follow-up into a standalone question for retrieval.
+    Non-fatal: returns the original question if the LLM call fails."""
+    if not history:
+        return question
+    convo = "\n".join(f"User: {q}\nAssistant: {a}" for q, a in history[-4:])
+    try:
+        out = generate(_CONDENSE_PROMPT.format(history=convo, question=question), stream=False)
+        return str(out).strip().strip('"') or question
+    except Exception:
+        return question
 
 
 # --- generation (delegates to the configured backend) ------------------
@@ -61,10 +114,26 @@ def warmup() -> tuple[bool, str]:
 
 # --- one-call convenience ----------------------------------------------
 def answer(question: str, top_k: int | None = None) -> tuple[str, RetrievalResult]:
-    """Full non-streaming pipeline: returns (answer_text, RetrievalResult)."""
+    """Full non-streaming pipeline for a single question."""
     result = retrieve(question, top_k)
     text = generate(build_prompt(question, result.hits), stream=False)
     return text, result
+
+
+def answer_chat(
+    question: str, history: list[Turn] | None = None, top_k: int | None = None
+) -> tuple[str, RetrievalResult, str]:
+    """Follow-up-aware pipeline.
+
+    Condenses (question + history) into a standalone query, retrieves fresh
+    passages for it, and generates grounded in those + the conversation.
+    Returns (answer_text, RetrievalResult, standalone_query).
+    """
+    history = history or []
+    standalone = condense_question(question, history)
+    result = retrieve(standalone, top_k)
+    text = generate(build_chat_prompt(question, history, result.hits), stream=False)
+    return text, result, standalone
 
 
 # --- health ----------------------------------------------------------------

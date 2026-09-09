@@ -59,6 +59,18 @@ def test_rrf_k_dampens_rank_gaps():
     assert (small_k["a"] - small_k["b"]) > (large_k["a"] - large_k["b"])
 
 
+def test_cap_per_paper_limits_and_preserves_order():
+    r = Retriever.__new__(Retriever)
+    r._doc_by_id = {
+        "s1": {"arxiv_id": "S"}, "s2": {"arxiv_id": "S"}, "s3": {"arxiv_id": "S"},
+        "s4": {"arxiv_id": "S"}, "g1": {"arxiv_id": "G"}, "x1": {"arxiv_id": "X"},
+    }
+    ids = ["s1", "s2", "s3", "s4", "g1", "x1"]
+    assert r._cap_per_paper(ids, cap=2) == ["s1", "s2", "g1", "x1"]
+    assert r._cap_per_paper(ids, cap=0) == ids  # 0 disables the cap
+    assert r._cap_per_paper(ids, cap=99) == ids
+
+
 # ── end-to-end (needs the store) ───────────────────────────────────────
 @needs_store
 def test_dense_retrieval_returns_top_k_hits():

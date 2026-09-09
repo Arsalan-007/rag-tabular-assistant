@@ -189,6 +189,21 @@ class Retriever:
         scored.sort(key=lambda t: t[1], reverse=True)
         return scored
 
+    def _cap_per_paper(self, ids: list[str], cap: int) -> list[str]:
+        """Keep at most `cap` chunks from any single paper, preserving order.
+        Stops one long paper (a survey) from flooding the rerank pool."""
+        if not cap:
+            return ids
+        seen: dict[str, int] = {}
+        out: list[str] = []
+        for i in ids:
+            pid = self._doc_by_id.get(i, {}).get("arxiv_id", "?")
+            if seen.get(pid, 0) >= cap:
+                continue
+            seen[pid] = seen.get(pid, 0) + 1
+            out.append(i)
+        return out
+
     # --- public API ---------------------------------------------------------
     def retrieve(self, query: str, top_k: int | None = None) -> RetrievalResult:
         top_k = top_k or settings.top_k
@@ -198,15 +213,43 @@ class Retriever:
         t: dict[str, float] = {}
         t0 = time.perf_counter()
 
-        # dense (always)
-        d0 = time.perf_counter()
-        dense_ids, dense_sims = self._dense(query, fetch_k)
-        t["dense_total"] = (time.perf_counter() - d0) * 1000
-        t["embed"] = round(getattr(self, "_last_embed_ms", 0.0), 1)
-        t["vector_search"] = round(t["dense_total"] - t["embed"], 1)
-        best_dense = max(dense_sims.values()) if dense_sims else 0.0
+        # optional: expand the query into a few LLM-generated paraphrases
+        queries = [query]
+        if settings.query_rewrite:
+            from query_rewrite import expand
 
-        # sparse + fuse (hybrid only)
+            w0 = time.perf_counter()
+            queries = expand(query)
+            t["rewrite"] = round((time.perf_counter() - w0) * 1000, 1)
+
+        # dense: one search per query variant, RRF-fused; keep the best sim per id
+        d0 = time.perf_counter()
+        embed_ms = 0.0
+        orig_best_sim = 0.0
+        dense_rankings: list[list[str]] = []
+        dense_sims: dict[str, float] = {}
+        for idx, q in enumerate(queries):
+            ids_q, sims_q = self._dense(q, fetch_k)
+            embed_ms += getattr(self, "_last_embed_ms", 0.0)
+            dense_rankings.append(ids_q)
+            for i, s in sims_q.items():
+                dense_sims[i] = max(dense_sims.get(i, 0.0), s)
+            if idx == 0:  # queries[0] is always the user's original query
+                orig_best_sim = max(sims_q.values()) if sims_q else 0.0
+        if len(dense_rankings) > 1:
+            fd = self._rrf(dense_rankings, settings.rrf_k)
+            dense_ids = sorted(fd, key=lambda i: fd[i], reverse=True)[:fetch_k]
+        else:
+            dense_ids = dense_rankings[0]
+        t["dense_total"] = (time.perf_counter() - d0) * 1000
+        t["embed"] = round(embed_ms, 1)
+        # The low-confidence guard is about whether the CORPUS covers the user's
+        # question -- judge that on the original query, not on LLM rewrites that
+        # can always be steered toward something the corpus contains.
+        best_dense = orig_best_sim
+
+        # sparse + fuse (hybrid only). BM25 runs on the original query only --
+        # the user's own words are the right lexical signal.
         sparse_ids: list[str] = []
         if mode == "hybrid":
             s0 = time.perf_counter()
@@ -219,13 +262,14 @@ class Retriever:
             candidate_ids = dense_ids[:fetch_k]
             rrf_scores = {}
 
+        # cap chunks-per-paper so a verbose survey can't crowd out primary sources
+        candidate_ids = self._cap_per_paper(candidate_ids, settings.chunks_per_paper)
+
         dense_set, sparse_set = set(dense_ids), set(sparse_ids)
 
         # rerank (optional) or take the fused/dense head
         if do_rerank:
             r0 = time.perf_counter()
-            # Only score the head of the fused pool: the target chunk is almost
-            # always there, and cross-encoder passes dominate latency.
             to_rerank = candidate_ids[: settings.rerank_candidates]
             reranked = self._rerank(query, to_rerank)
             t["rerank"] = (time.perf_counter() - r0) * 1000

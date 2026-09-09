@@ -2,17 +2,17 @@
   "results": [
     {
       "label": "dense",
-      "n_questions": 39,
+      "n_questions": 40,
       "hit_rate": {
-        "1": 0.8205,
-        "3": 0.8974,
-        "5": 0.9487,
-        "10": 0.9744
+        "1": 0.825,
+        "3": 0.9,
+        "5": 0.95,
+        "10": 0.975
       },
-      "mrr": 0.8748,
+      "mrr": 0.8779,
       "n_misses": 1,
-      "latency_p50_ms": 16.2,
-      "latency_p95_ms": 18.0,
+      "latency_p50_ms": 19.4,
+      "latency_p95_ms": 26.2,
       "guard_pass": 4,
       "guard_total": 4,
       "misses": [
@@ -33,17 +33,17 @@
     },
     {
       "label": "hybrid (BM25 + RRF)",
-      "n_questions": 39,
+      "n_questions": 40,
       "hit_rate": {
-        "1": 0.8462,
-        "3": 0.9487,
-        "5": 0.9487,
-        "10": 0.9744
+        "1": 0.825,
+        "3": 0.925,
+        "5": 0.925,
+        "10": 0.975
       },
-      "mrr": 0.8974,
+      "mrr": 0.8786,
       "n_misses": 1,
-      "latency_p50_ms": 24.0,
-      "latency_p95_ms": 27.1,
+      "latency_p50_ms": 42.0,
+      "latency_p95_ms": 55.2,
       "guard_pass": 4,
       "guard_total": 4,
       "misses": [
@@ -64,37 +64,68 @@
     },
     {
       "label": "dense + rerank",
-      "n_questions": 39,
+      "n_questions": 40,
       "hit_rate": {
-        "1": 0.8205,
-        "3": 0.9744,
-        "5": 1.0,
+        "1": 0.8,
+        "3": 0.95,
+        "5": 0.975,
         "10": 1.0
       },
-      "mrr": 0.8996,
+      "mrr": 0.8802,
       "n_misses": 0,
-      "latency_p50_ms": 1702.3,
-      "latency_p95_ms": 3249.0,
+      "latency_p50_ms": 2237.2,
+      "latency_p95_ms": 3037.1,
       "guard_pass": 4,
       "guard_total": 4,
       "misses": []
     },
     {
       "label": "hybrid + rerank",
-      "n_questions": 39,
+      "n_questions": 40,
       "hit_rate": {
-        "1": 0.7949,
-        "3": 0.9487,
-        "5": 0.9744,
+        "1": 0.775,
+        "3": 0.925,
+        "5": 0.95,
         "10": 1.0
       },
-      "mrr": 0.8782,
+      "mrr": 0.859,
       "n_misses": 0,
-      "latency_p50_ms": 2251.2,
-      "latency_p95_ms": 3046.6,
+      "latency_p50_ms": 2282.2,
+      "latency_p95_ms": 3313.9,
       "guard_pass": 4,
       "guard_total": 4,
       "misses": []
+    },
+    {
+      "label": "hybrid + rerank + rewrite",
+      "n_questions": 40,
+      "hit_rate": {
+        "1": 0.85,
+        "3": 0.95,
+        "5": 0.95,
+        "10": 0.975
+      },
+      "mrr": 0.899,
+      "n_misses": 1,
+      "latency_p50_ms": 4555.3,
+      "latency_p95_ms": 6047.8,
+      "guard_pass": 4,
+      "guard_total": 4,
+      "misses": [
+        {
+          "q": "Is deep learning all you need for tabular data, or do gradient-boosted trees still win on typical benchmarks?",
+          "gold": [
+            "2106.03253"
+          ],
+          "got": [
+            "2110.01889",
+            "2410.24210",
+            "2106.11189",
+            "1909.06312",
+            "2207.08815"
+          ]
+        }
+      ]
     }
   ],
   "k_values": [

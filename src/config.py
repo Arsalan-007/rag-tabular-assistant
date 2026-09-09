@@ -56,9 +56,22 @@ class Settings(BaseSettings):
     reranker_model: str = "BAAI/bge-reranker-base"
 
     fetch_k: int = 20  # candidates pulled from each retriever, before fusion
-    rerank_candidates: int = 12  # of the fused pool, how many the cross-encoder scores
+    # How many fused candidates the cross-encoder scores. 12 measured best on the
+    # eval set; raising it to 20 regressed hit@1 / MRR (more distractors to rank).
+    rerank_candidates: int = 12
+    # Cap chunks-per-paper in the fused pool. 0 = off. A cap of 3 was tried to
+    # stop verbose surveys flooding the pool; it regressed the aggregate without
+    # fixing the target query, so it's off by default (kept as a knob).
+    chunks_per_paper: int = 0
     top_k: int = 5  # passages handed to the generator
     rrf_k: int = 60  # Reciprocal Rank Fusion smoothing constant
+
+    # Multi-query expansion: rewrite the question a few ways with an LLM and
+    # fuse the retrievals. Helps the *class* of oblique paraphrases but adds an
+    # LLM call per query and can inflate the low-confidence guard, so off by
+    # default. When on, the guard still uses the ORIGINAL query's similarity.
+    query_rewrite: bool = False
+    query_rewrite_n: int = 3  # number of alternative phrasings to generate
     # bge-small embeddings sit around ~0.45-0.55 cosine even for unrelated text
     # and ~0.80+ for on-topic; ~0.6 cleanly separates the two. Calibrated
     # against the eval set + off-topic probes (see eval/results.md).
@@ -88,10 +101,15 @@ class Settings(BaseSettings):
 
     def retrieval_summary(self) -> str:
         """One-line description of the active retrieval pipeline, for logs / UI."""
-        stages = ["bge-small"]
+        stages = []
+        if self.query_rewrite:
+            stages.append(f"rewrite x{self.query_rewrite_n}")
+        stages.append("bge-small")
         if self.retrieval_mode == "hybrid":
             stages.append("BM25")
             stages.append(f"RRF(k={self.rrf_k})")
+        if self.chunks_per_paper:
+            stages.append(f"cap {self.chunks_per_paper}/paper")
         if self.rerank:
             stages.append(f"rerank[{self.reranker_model.split('/')[-1]}]")
         return f"{' → '.join(stages)}  (fetch_k={self.fetch_k}, top_k={self.top_k})"

@@ -38,13 +38,18 @@ import config
 from eval_questions import EVAL_QUESTIONS, OUT_OF_DOMAIN
 from retrieval import Retriever
 
-# Pipeline variants for --ablation, in increasing sophistication.
+# Pipeline variants for --ablation, in increasing sophistication. All inherit
+# the configured chunks_per_paper cap; query_rewrite is off unless --with-rewrite.
 ABLATION_CONFIGS = [
-    ("dense", {"retrieval_mode": "dense", "rerank": False}),
-    ("hybrid (BM25 + RRF)", {"retrieval_mode": "hybrid", "rerank": False}),
-    ("dense + rerank", {"retrieval_mode": "dense", "rerank": True}),
-    ("hybrid + rerank", {"retrieval_mode": "hybrid", "rerank": True}),
+    ("dense", {"retrieval_mode": "dense", "rerank": False, "query_rewrite": False}),
+    ("hybrid (BM25 + RRF)", {"retrieval_mode": "hybrid", "rerank": False, "query_rewrite": False}),
+    ("dense + rerank", {"retrieval_mode": "dense", "rerank": True, "query_rewrite": False}),
+    ("hybrid + rerank", {"retrieval_mode": "hybrid", "rerank": True, "query_rewrite": False}),
 ]
+REWRITE_CONFIG = (
+    "hybrid + rerank + rewrite",
+    {"retrieval_mode": "hybrid", "rerank": True, "query_rewrite": True},
+)
 
 
 @dataclass
@@ -126,11 +131,13 @@ def _apply(overrides: dict) -> Retriever:
     return r
 
 
-def run_ablation(k_values: list[int]) -> list[RunMetrics]:
-    saved = {k: getattr(config.settings, k) for k in ("retrieval_mode", "rerank")}
+def run_ablation(k_values: list[int], with_rewrite: bool = False) -> list[RunMetrics]:
+    keys = ("retrieval_mode", "rerank", "query_rewrite")
+    saved = {k: getattr(config.settings, k) for k in keys}
+    configs = [*ABLATION_CONFIGS, REWRITE_CONFIG] if with_rewrite else ABLATION_CONFIGS
     results = []
     try:
-        for label, overrides in ABLATION_CONFIGS:
+        for label, overrides in configs:
             print(f"  running: {label} ...", flush=True)
             results.append(evaluate_retrieval(_apply(overrides), k_values, label))
     finally:
@@ -325,6 +332,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Evaluate the RAG assistant.")
     ap.add_argument("--k", type=int, nargs="+", default=[1, 3, 5, 10])
     ap.add_argument("--ablation", action="store_true", help="run the dense/hybrid/+rerank matrix")
+    ap.add_argument("--with-rewrite", action="store_true",
+                    help="add a query-rewrite row to the ablation (needs a generator)")
     ap.add_argument("--judge", action="store_true", help="also run LLM-as-judge faithfulness (slow)")
     ap.add_argument("--out", type=str, help="write a markdown report to this path")
     ap.add_argument("--json", type=str, help="dump raw metrics as JSON to this path")
@@ -334,7 +343,7 @@ def main() -> None:
     print(f"[config] {config.settings.retrieval_summary()}")
 
     if args.ablation:
-        results = run_ablation(args.k)
+        results = run_ablation(args.k, with_rewrite=args.with_rewrite)
     else:
         r = Retriever()
         r.warmup()

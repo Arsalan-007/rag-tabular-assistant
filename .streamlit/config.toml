@@ -1,0 +1,25 @@
+# Streamlit's OWN theme. This is what paints the splash screen, the header,
+# the chat input, widget text and every default surface -- so it has to be set
+# here, not patched over with CSS. app.py adds only a thin layer on top.
+#
+# Palette: slate (900/800/700) + teal accent. High contrast on purpose:
+#   text  #E9EEF5 on bg #0F172A  -> ~14:1   (WCAG AAA)
+#   dim   #94A3B8 on bg #0F172A  -> ~6.6:1  (AA)
+#   teal  #2DD4BF on bg #0F172A  -> ~9.5:1
+
+[theme]
+base = "dark"
+primaryColor = "#2DD4BF"
+backgroundColor = "#0F172A"
+secondaryBackgroundColor = "#1B2336"
+textColor = "#E9EEF5"
+linkColor = "#5EEAD4"
+borderColor = "#334155"
+font = "sans-serif"
+codeFont = "monospace"
+
+[client]
+toolbarMode = "minimal"
+
+[browser]
+gatherUsageStats = false

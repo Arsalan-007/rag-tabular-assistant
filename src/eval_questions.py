@@ -53,6 +53,15 @@ EVAL_QUESTIONS = [
         "papers": ["2110.01889", "2504.16109", "2407.00956"],
         "note": "Any of the two surveys or Ye's benchmarking study.",
     },
+    {
+        "q": "What three reasons does the literature give for why deep neural networks fail to "
+             "outperform gradient-boosted trees on tabular data?",
+        "papers": ["2207.08815"],
+        "note": "Grinsztajn's three findings: bias toward smooth solutions, sensitivity to "
+                "uninformative features, rotation (non-)invariance. Oblique phrasing that "
+                "doesn't match the paper's own wording -- a known retrieval-hard case "
+                "(see eval/results.md).",
+    },
 
     # ── Gradient boosting foundations ─────────────────────────────────
     {
