@@ -55,10 +55,14 @@ class Settings(BaseSettings):
     rerank: bool = True
     reranker_model: str = "BAAI/bge-reranker-base"
 
-    fetch_k: int = 20  # candidates per retriever, before fusion / rerank
+    fetch_k: int = 20  # candidates pulled from each retriever, before fusion
+    rerank_candidates: int = 12  # of the fused pool, how many the cross-encoder scores
     top_k: int = 5  # passages handed to the generator
     rrf_k: int = 60  # Reciprocal Rank Fusion smoothing constant
-    min_similarity: float = 0.25  # warn if the best passage scores below this
+    # bge-small embeddings sit around ~0.45-0.55 cosine even for unrelated text
+    # and ~0.80+ for on-topic; ~0.6 cleanly separates the two. Calibrated
+    # against the eval set + off-topic probes (see eval/results.md).
+    min_similarity: float = 0.6  # warn if the best passage scores below this
 
     # ── Ingestion ──────────────────────────────────────────────────────
     chunk_size: int = 900

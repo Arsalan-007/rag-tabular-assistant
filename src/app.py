@@ -221,10 +221,17 @@ if run and question.strip():
         st.markdown('<p class="lbl" style="margin-top:1.4rem">Answer</p>',
                     unsafe_allow_html=True)
         try:
-            hits = rag.retrieve(question, k)
+            result = rag.retrieve(question, k)
+            hits = result.hits
         except Exception as e:
             st.error(f"Retrieval failed: {e}")
             st.stop()
+
+        if result.low_confidence:
+            st.warning(
+                f"Best passage similarity {result.best_dense_similarity:.2f} is low — "
+                "the corpus may not cover this question."
+            )
 
         prompt = rag.build_prompt(question, hits)
 
@@ -245,19 +252,19 @@ if run and question.strip():
         st.markdown('<p class="lbl">Retrieved sources · similarity</p>',
                     unsafe_allow_html=True)
         for i, h in enumerate(hits, 1):
-            pct = max(0, min(100, round(h["score"] * 100)))
-            arxiv_id = h["arxiv_id"]
+            pct = max(0, min(100, round(h.score * 100)))
+            arxiv_id = h.arxiv_id
             st.markdown(
                 f"""
                 <div class="src">
                   <span class="idx">[{i}]</span>
-                  <div class="ttl">{h['title']}</div>
-                  <div class="meta">{h['authors']} · {h['year']} ·
+                  <div class="ttl">{h.title}</div>
+                  <div class="meta">{h.authors} · {h.year} ·
                     <a href="https://arxiv.org/abs/{arxiv_id}" target="_blank">arXiv:{arxiv_id}</a>
                   </div>
                   <div class="bar-wrap">
                     <div class="bar-track"><div class="bar-fill" style="width:{pct}%"></div></div>
-                    <span class="bar-val">{h['score']:.2f}</span>
+                    <span class="bar-val">{h.score:.2f}</span>
                   </div>
                   <a class="pdf-btn" href="https://arxiv.org/pdf/{arxiv_id}" target="_blank">View PDF ↗</a>
                 </div>

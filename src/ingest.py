@@ -25,30 +25,24 @@ Design notes:
 import argparse
 import os
 import re
-import sys
 import time
 import urllib.request
-from pathlib import Path
 
 import arxiv
-import fitz  # PyMuPDF
 import chromadb
+import fitz  # PyMuPDF
 from sentence_transformers import SentenceTransformer
 
-from seed_papers import SEED_PAPERS, NON_ARXIV
+from config import CHROMA_DIR, COLLECTION_NAME, PDF_DIR, settings
+from seed_papers import NON_ARXIV, SEED_PAPERS
 
-# --- Paths -----------------------------------------------------------------
-ROOT = Path(__file__).resolve().parent.parent
-PDF_DIR = ROOT / "data" / "pdfs"
-CHROMA_DIR = ROOT / "data" / "chroma"
-COLLECTION_NAME = "tabular_papers"
-
-# --- Tunables (revisit these against your eval) ----------------------------
-EMBED_MODEL = "BAAI/bge-small-en-v1.5"
-CHUNK_SIZE = 900        # characters
-CHUNK_OVERLAP = 150     # characters
-EMBED_BATCH = 48        # chunks per encode() call -- keeps CPU memory flat
-MIN_CHUNK_CHARS = 200   # drop tiny fragments (captions, stray headers)
+# All tunables live in config.py (env / .env overridable). Bound as module
+# names here so the pipeline body reads cleanly.
+EMBED_MODEL = settings.embed_model
+CHUNK_SIZE = settings.chunk_size
+CHUNK_OVERLAP = settings.chunk_overlap
+EMBED_BATCH = settings.embed_batch
+MIN_CHUNK_CHARS = settings.min_chunk_chars
 
 
 # ==========================================================================
@@ -286,7 +280,7 @@ def main():
         print(f"\n  ⚠  {len(missing)} seed paper(s) NOT returned by arXiv "
               f"(check the IDs):")
         for pid in missing:
-            label = next((l for i, l in SEED_PAPERS if i == pid), "?")
+            label = next((lbl for pid_, lbl in SEED_PAPERS if pid_ == pid), "?")
             print(f"       - {pid}  ({label})")
 
     if NON_ARXIV:
