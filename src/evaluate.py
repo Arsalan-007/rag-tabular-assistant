@@ -293,13 +293,28 @@ def markdown_report(results: list[RunMetrics], k_values: list[int], judge=None) 
             lines.append("")
     if judge is not None:
         mean_score, n_ok, n_total = judge
+        judge_model = (
+            config.settings.gemini_model
+            if config.settings.generator == "gemini"
+            else config.settings.ollama_model
+        )
         lines += [
             "",
             "## Answer faithfulness (LLM-as-judge)",
             "",
-            f"Mean faithfulness **{mean_score:.2f} / 5** over {n_ok}/{n_total} gradable answers "
-            f"(judge: {config.settings.generator} · {config.settings.gemini_model if config.settings.generator == 'gemini' else config.settings.ollama_model}). "
-            "Reported separately from retrieval — a small judge is noisy.",
+            f"Mean faithfulness **{mean_score:.2f} / 5** over {n_ok}/{n_total} gradable "
+            f"answers (judge: {config.settings.generator} · {judge_model}).",
+            "",
+            "Reported apart from retrieval, and read with caution:",
+            "",
+            "- The generator is told to answer *only* from the provided passages and to "
+            "say so when they're insufficient. A near-ceiling score mostly confirms that "
+            "instruction is being followed — it is **not** an adversarial test.",
+            "- The judge is the same model family as the generator, which biases it "
+            "toward leniency.",
+            "- A discriminating version would inject known-unsupported claims and check "
+            "the judge catches them, and/or use a stronger, different judge model. "
+            "That's future work.",
         ]
     lines += ["", "---", "", "_Regenerate: `python src/evaluate.py --ablation --out eval/results.md`_", ""]
     return "\n".join(lines)

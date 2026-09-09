@@ -11,8 +11,8 @@
       },
       "mrr": 0.8748,
       "n_misses": 1,
-      "latency_p50_ms": 20.3,
-      "latency_p95_ms": 26.2,
+      "latency_p50_ms": 16.2,
+      "latency_p95_ms": 18.0,
       "guard_pass": 4,
       "guard_total": 4,
       "misses": [
@@ -42,8 +42,8 @@
       },
       "mrr": 0.8974,
       "n_misses": 1,
-      "latency_p50_ms": 37.4,
-      "latency_p95_ms": 42.9,
+      "latency_p50_ms": 24.0,
+      "latency_p95_ms": 27.1,
       "guard_pass": 4,
       "guard_total": 4,
       "misses": [
@@ -73,8 +73,8 @@
       },
       "mrr": 0.8996,
       "n_misses": 0,
-      "latency_p50_ms": 1821.1,
-      "latency_p95_ms": 3239.3,
+      "latency_p50_ms": 1702.3,
+      "latency_p95_ms": 3249.0,
       "guard_pass": 4,
       "guard_total": 4,
       "misses": []
@@ -90,8 +90,8 @@
       },
       "mrr": 0.8782,
       "n_misses": 0,
-      "latency_p50_ms": 1984.2,
-      "latency_p95_ms": 3389.6,
+      "latency_p50_ms": 2251.2,
+      "latency_p95_ms": 3046.6,
       "guard_pass": 4,
       "guard_total": 4,
       "misses": []

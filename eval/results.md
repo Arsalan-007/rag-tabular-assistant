@@ -15,14 +15,14 @@
 
 | pipeline | hit@1 | hit@3 | hit@5 | hit@10 | MRR | p50 ms | p95 ms | guard |
 |---|---|---|---|---|---|---|---|---|
-| dense | 0.821 | 0.897 | 0.949 | 0.974 | 0.875 | 20 | 26 | 4/4 |
-| hybrid (BM25 + RRF) | 0.846 | 0.949 | 0.949 | 0.974 | 0.897 | 37 | 43 | 4/4 |
-| dense + rerank | 0.821 | 0.974 | 1.000 | 1.000 | 0.900 | 1821 | 3239 | 4/4 |
-| hybrid + rerank | 0.795 | 0.949 | 0.974 | 1.000 | 0.878 | 1984 | 3390 | 4/4 |
+| dense | 0.821 | 0.897 | 0.949 | 0.974 | 0.875 | 16 | 18 | 4/4 |
+| hybrid (BM25 + RRF) | 0.846 | 0.949 | 0.949 | 0.974 | 0.897 | 24 | 27 | 4/4 |
+| dense + rerank | 0.821 | 0.974 | 1.000 | 1.000 | 0.900 | 1702 | 3249 | 4/4 |
+| hybrid + rerank | 0.795 | 0.949 | 0.974 | 1.000 | 0.878 | 2251 | 3047 | 4/4 |
 
 ## Takeaways
 
-- **Reranking is the decisive stage.** It lifts hit@10 to 1.000 and hit@3 to 0.974, for ~1821 ms/query median (vs ~20 ms without it) — the cross-encoder dominates latency.
+- **Reranking is the decisive stage.** It lifts hit@10 to 1.000 and hit@3 to 0.974, for ~1702 ms/query median (vs ~16 ms without it) — the cross-encoder dominates latency.
 - **BM25 helps on its own**: hybrid beats dense at MRR (0.897 vs 0.875) and hit@1 (0.846 vs 0.821) — exact-term matches (method acronyms, symbols) that a 33M-param embedder blurs.
 - **Under reranking, hybrid vs dense is within noise** on this 39-question set (~1 question per point). The eval over-samples clean "how does X work" questions; hybrid is kept on by default as a safety net for rarer exact-term queries.
 - **Guard rail**: 4/4 out-of-domain probes correctly flagged low-confidence in every configuration.
@@ -39,6 +39,16 @@ Configured default: `bge-small → BM25 → RRF(k=60) → rerank[bge-reranker-ba
 - _How well do simple, well-regularised MLPs perform on tabular benchmarks when their regularisation is tuned?_  
   wanted `['2106.11189']`, got `['2410.24210', '2604.15297', '2203.05556', '2106.01342', '2207.03208']`
 
+
+## Answer faithfulness (LLM-as-judge)
+
+Mean faithfulness **5.00 / 5** over 39/39 gradable answers (judge: gemini · gemini-flash-lite-latest).
+
+Reported apart from retrieval, and read with caution:
+
+- The generator is told to answer *only* from the provided passages and to say so when they're insufficient. A near-ceiling score mostly confirms that instruction is being followed — it is **not** an adversarial test.
+- The judge is the same model family as the generator, which biases it toward leniency.
+- A discriminating version would inject known-unsupported claims and check the judge catches them, and/or use a stronger, different judge model. That's future work.
 
 ---
 
