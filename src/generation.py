@@ -36,6 +36,33 @@ _TRANSIENT = ("429", "500", "502", "503", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "
 
 # Gemini 429s carry the wait as "Please retry in 12.7s" and "retryDelay": "12s".
 _RETRY_HINT = re.compile(r"retry(?:Delay)?[\"']?\s*[:=]?\s*(?:in\s+)?[\"']?(\d+(?:\.\d+)?)\s*s", re.I)
+_QUOTA_ID = re.compile(r"'quotaId': '([^']+)'")
+_QUOTA_VALUE = re.compile(r"'quotaValue': '([^']+)'")
+
+
+def quota_message(err: str) -> str:
+    """Turn a 429 into advice that matches WHICH limit was hit.
+
+    Free-tier quotas are per project *per model*: 15 requests/minute and 500
+    requests/day. 'Wait a moment' is right for the former and actively wrong for
+    the latter, which only resets at midnight Pacific.
+    """
+    qid = _QUOTA_ID.search(err)
+    limit = _QUOTA_VALUE.search(err)
+    limit_s = f" (limit {limit.group(1)})" if limit else ""
+    if qid and "PerDay" in qid.group(1):
+        return (
+            f"Gemini's free-tier **daily** quota for this model is used up{limit_s}. "
+            "It resets at midnight Pacific — waiting a few minutes will not help. "
+            "Options: switch GEMINI_MODEL (each model has its own daily budget), "
+            "or enable billing on the Google Cloud project."
+        )
+    if qid and "PerMinute" in qid.group(1):
+        return (
+            f"Gemini's free-tier **per-minute** limit was hit{limit_s}. "
+            "Wait about a minute and ask again."
+        )
+    return "Gemini's free-tier quota is exhausted right now. Wait a moment and try again."
 
 
 def _retry_transient(
@@ -177,9 +204,33 @@ class GeminiGenerator:
         self.model = model or settings.gemini_model
         self.temperature = settings.temperature if temperature is None else temperature
         self._client = None
+        # Models to try, in order, when the primary hits its daily/minute cap.
+        self._chain = [self.model] + [
+            m.strip() for m in settings.gemini_fallback_models.split(",")
+            if m.strip() and m.strip() != self.model
+        ]
+        self._active = self.model  # last model that actually served a request
 
     def describe(self) -> str:
+        if self._active != self.model:
+            return f"Gemini · {self._active} (API, fell back from {self.model})"
         return f"Gemini · {self.model} (API)"
+
+    def _across_models(self, call):
+        """Run `call(model)` against each model in the chain, moving on when one
+        is out of quota. Free-tier limits are per model, so the next model is a
+        fresh 500/day rather than the same wall."""
+        last = None
+        for m in self._chain:
+            try:
+                out = _retry_transient(lambda m=m: call(m))
+                self._active = m
+                return out
+            except Exception as e:  # noqa: BLE001
+                last = e
+                if not any(t in str(e) for t in _TRANSIENT):
+                    raise
+        raise last
 
     def _get_client(self):
         if self._client is None:
@@ -197,35 +248,37 @@ class GeminiGenerator:
 
     def generate(self, prompt: str, stream: bool = False) -> str | Iterator[str]:
         client = self._get_client()
+
         if not stream:
-            resp = _retry_transient(
-                lambda: client.models.generate_content(
-                    model=self.model, contents=prompt, config=self._config()
+            resp = self._across_models(
+                lambda m: client.models.generate_content(
+                    model=m, contents=prompt, config=self._config()
                 )
             )
             return resp.text or ""
 
         def _iter() -> Iterator[str]:
-            # Retry only establishing the stream (the HTTP call fires on the
-            # first next()); once tokens flow a mid-stream failure propagates.
-            def _start():
+            # The HTTP call fires on the first next(), so pulling one chunk
+            # inside the retry is what actually surfaces a quota error.
+            def _start(m):
                 it = client.models.generate_content_stream(
-                    model=self.model, contents=prompt, config=self._config()
+                    model=m, contents=prompt, config=self._config()
                 )
-                first = next(it, None)
-                return it, first
+                return it, next(it, None)
 
             try:
-                it, first = _retry_transient(_start)
+                it, first = self._across_models(_start)
             except Exception as e:
-                # The streaming endpoint has its own, tighter free-tier quota:
-                # it 429s while plain generateContent still succeeds. Rather
-                # than fail the turn, fall back to one non-streaming call and
-                # deliver the answer in a single chunk.
+                # The streaming endpoint has a tighter free-tier quota than
+                # plain generateContent -- measured: stream 429s while generate
+                # succeeds on the same key/model. Degrade to one non-streaming
+                # call (itself model-fallback-aware) rather than fail the turn.
                 if not any(t in str(e) for t in _TRANSIENT):
                     raise
-                resp = client.models.generate_content(
-                    model=self.model, contents=prompt, config=self._config()
+                resp = self._across_models(
+                    lambda m: client.models.generate_content(
+                        model=m, contents=prompt, config=self._config()
+                    )
                 )
                 if resp.text:
                     yield resp.text
@@ -278,11 +331,7 @@ class GeminiGenerator:
                     "current alias such as 'gemini-flash-lite-latest'."
                 )
             if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
-                return False, (
-                    "Gemini free-tier quota is exhausted right now (rate limit is per "
-                    "minute and per day). Wait a moment and reload, or point "
-                    "GEMINI_MODEL at a model with spare quota."
-                )
+                return False, quota_message(msg)
             return False, f"Gemini API error: {msg[:200]}"
 
 

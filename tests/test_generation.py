@@ -56,6 +56,53 @@ def test_ollama_describe_and_health_message(monkeypatch):
     assert ok is False and "not reachable" in msg
 
 
+def test_quota_message_distinguishes_daily_from_per_minute():
+    from generation import quota_message
+
+    day = "429 {'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaValue': '500'}"
+    minute = "429 {'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaValue': '15'}"
+    assert "daily" in quota_message(day) and "midnight" in quota_message(day)
+    assert "per-minute" in quota_message(minute)
+    # the daily case must NOT tell the user to just wait a moment
+    assert "Wait about a minute" not in quota_message(day)
+
+
+def test_gemini_falls_back_to_next_model_when_out_of_quota():
+    """Free-tier quota is per project PER MODEL, so another model is fresh budget."""
+    from generation import GeminiGenerator
+
+    g = GeminiGenerator(api_key="k", model="primary")
+    g._chain = ["primary", "backup"]
+
+    class _Models:
+        def generate_content(self, model, **kw):
+            if model == "primary":
+                raise RuntimeError("429 RESOURCE_EXHAUSTED PerDay")
+            return type("R", (), {"text": f"served by {model}"})()
+
+    g._client = type("C", (), {"models": _Models()})()
+    assert g.generate("q") == "served by backup"
+    assert "backup" in g.describe() and "fell back" in g.describe()
+
+
+def test_gemini_reraises_non_transient_errors_without_burning_the_chain():
+    from generation import GeminiGenerator
+
+    g = GeminiGenerator(api_key="k", model="primary")
+    g._chain = ["primary", "backup"]
+    tried = []
+
+    class _Models:
+        def generate_content(self, model, **kw):
+            tried.append(model)
+            raise RuntimeError("400 INVALID_ARGUMENT bad prompt")
+
+    g._client = type("C", (), {"models": _Models()})()
+    with pytest.raises(RuntimeError):
+        g.generate("q")
+    assert tried == ["primary"]  # did not pointlessly retry other models
+
+
 def test_gemini_generator_needs_key(monkeypatch):
     monkeypatch.setattr(generation.settings, "gemini_api_key", "")
     ok, msg = make_generator("gemini").health()

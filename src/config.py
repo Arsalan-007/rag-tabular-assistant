@@ -46,6 +46,10 @@ class Settings(BaseSettings):
 
     gemini_api_key: str = ""
     gemini_model: str = "gemini-flash-lite-latest"
+    # Free-tier quota is per project PER MODEL (500 req/day, 15 req/min each),
+    # so a different model is a fresh budget. When the primary is exhausted the
+    # generator transparently moves down this list instead of failing the turn.
+    gemini_fallback_models: str = "gemini-3-flash-preview,gemini-3.6-flash,gemini-flash-latest"
 
     # ── Embeddings ──────────────────────────────────────────────────────
     embed_model: str = "BAAI/bge-small-en-v1.5"

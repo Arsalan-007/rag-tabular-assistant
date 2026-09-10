@@ -22,6 +22,7 @@ One-time setup, ~10 minutes. Free tier: CPU only, ~1 GB RAM, sleeps when idle.
 GENERATOR      = "gemini"
 GEMINI_API_KEY = "..."
 GEMINI_MODEL   = "gemini-flash-lite-latest"
+GEMINI_FALLBACK_MODELS = "gemini-3-flash-preview,gemini-3.6-flash,gemini-flash-latest"
 
 # The default reranker (bge-reranker-base, ~1.1 GB in memory) does NOT fit the
 # free tier. Use the small cross-encoder instead -- ~90 MB, still a real
@@ -67,3 +68,5 @@ ships on the next deploy.
 | Status pill shows `GEMINI_API_KEY is not set` | Secrets not saved, or the key name differs. It must be exactly `GEMINI_API_KEY`. |
 | `No vector store … and no tarball` | LFS object didn't come through. Check `data/chroma.tar.gz` on github.com is a pointer file and LFS is enabled for the repo. |
 | Answers say "the passages do not contain…" a lot | Expected for questions outside the 41 papers — the low-confidence banner should also appear. Not a bug. |
+| "Free-tier **daily** quota used up" | 500 requests/day per model. Resets midnight Pacific. The generator already falls back through `GEMINI_FALLBACK_MODELS`; if those are spent too, enable billing (flash-lite is cents/month at demo traffic) or wait. |
+| "Free-tier **per-minute** limit was hit" | 15 requests/minute per model. Wait ~60s. Normal under bursty use. |

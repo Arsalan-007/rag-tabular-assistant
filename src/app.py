@@ -417,10 +417,11 @@ if prompt:
         except Exception as e:
             err = str(e)
             if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                from generation import quota_message
+
                 slot.warning(
-                    "The generator's free-tier quota is exhausted (limits are per minute "
-                    "and per day). The passages below were retrieved successfully — wait "
-                    "a moment and ask again.",
+                    f"{quota_message(err)}\n\nRetrieval itself succeeded — the passages "
+                    "it found are below.",
                     icon="⚠️",
                 )
                 render_sources({"sources": result.hits, "reranked": result.reranked})
