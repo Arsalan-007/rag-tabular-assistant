@@ -193,11 +193,21 @@ st.markdown(
 # ─────────────────────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
 def _warm():
+    """Load the local models once per server process."""
     rag.get_retriever().warmup()
     return rag.warmup()
 
 
-ok, msg = rag.health_check()
+@st.cache_data(ttl=120, show_spinner=False)
+def _health():
+    """Cached deliberately: Streamlit reruns this whole script on EVERY widget
+    interaction, so an uncached health check would hit the generator API on
+    each slider drag and checkbox toggle -- enough to exhaust a free-tier
+    rate limit just by using the controls. TTL so it still recovers on its own."""
+    return rag.health_check()
+
+
+ok, msg = _health()
 if ok:
     with st.spinner("Warming up retrieval + generator (first launch only)…"):
         warm_ok, warm_msg = _warm()
@@ -398,7 +408,17 @@ if prompt:
                 slot.markdown(acc + " ▌")
             slot.markdown(acc if acc.strip() else "_(model returned no text)_")
         except Exception as e:
-            slot.error(f"Generation failed: {e}")
+            err = str(e)
+            if "429" in err or "RESOURCE_EXHAUSTED" in err:
+                slot.warning(
+                    "The generator's free-tier quota is exhausted (limits are per minute "
+                    "and per day). The passages below were retrieved successfully — wait "
+                    "a moment and ask again.",
+                    icon="⚠️",
+                )
+                render_sources({"sources": result.hits, "reranked": result.reranked})
+            else:
+                slot.error(f"Generation failed: {err[:300]}")
             st.stop()
 
         turn = {

@@ -209,20 +209,26 @@ class GeminiGenerator:
         return _iter()
 
     def warmup(self) -> tuple[bool, str]:
-        # Stateless API — nothing to preload. Just confirm the key/model work.
+        # Stateless HTTP API: nothing to preload, and a "warm-up" generation
+        # would just burn free-tier quota. Verify config instead.
         return self.health()
 
     def health(self) -> tuple[bool, str]:
+        """Validate key + model WITHOUT spending generation quota.
+
+        `models.get` is a metadata call on a separate, far larger quota than
+        generateContent. The obvious implementation -- generating a "ping" --
+        costs one of the free tier's ~15 requests/minute every time it runs,
+        which Streamlit does on every rerun (each widget interaction). That
+        alone can 429 a live demo.
+        """
         if not self.api_key:
             return False, "GEMINI_API_KEY is not set"
         placeholders = {"<your key>", "your-key-here", "...", "changeme"}
         if self.api_key.lower() in placeholders:
             return False, "GEMINI_API_KEY is still the placeholder text — paste your real key"
         try:
-            client = self._get_client()
-            client.models.generate_content(
-                model=self.model, contents="ping", config=self._config()
-            )
+            self._get_client().models.get(model=self.model)
             return True, f"gemini reachable ({self.model})"
         except Exception as e:
             msg = str(e)
@@ -239,6 +245,12 @@ class GeminiGenerator:
                 return False, (
                     f"Gemini model {self.model!r} is unavailable — set GEMINI_MODEL to a "
                     "current alias such as 'gemini-flash-lite-latest'."
+                )
+            if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+                return False, (
+                    "Gemini free-tier quota is exhausted right now (rate limit is per "
+                    "minute and per day). Wait a moment and reload, or point "
+                    "GEMINI_MODEL at a model with spare quota."
                 )
             return False, f"Gemini API error: {msg[:200]}"
 
