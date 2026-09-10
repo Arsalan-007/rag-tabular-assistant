@@ -215,6 +215,9 @@ class GeminiGenerator:
     def health(self) -> tuple[bool, str]:
         if not self.api_key:
             return False, "GEMINI_API_KEY is not set"
+        placeholders = {"<your key>", "your-key-here", "...", "changeme"}
+        if self.api_key.lower() in placeholders:
+            return False, "GEMINI_API_KEY is still the placeholder text — paste your real key"
         try:
             client = self._get_client()
             client.models.generate_content(
@@ -222,7 +225,22 @@ class GeminiGenerator:
             )
             return True, f"gemini reachable ({self.model})"
         except Exception as e:
-            return False, f"Gemini API error: {str(e)[:200]}"
+            msg = str(e)
+            # Turn the two common misconfigurations into actionable messages
+            # instead of echoing a raw 400/404 at the user.
+            if "API key not valid" in msg or "API_KEY_INVALID" in msg:
+                return False, (
+                    f"Gemini rejected the API key (length {len(self.api_key)}, "
+                    f"starts {self.api_key[:6]!r}). Check Secrets for stray quotes, "
+                    "whitespace or a truncated paste — or regenerate the key at "
+                    "aistudio.google.com/apikey."
+                )
+            if "is no longer available" in msg or "NOT_FOUND" in msg:
+                return False, (
+                    f"Gemini model {self.model!r} is unavailable — set GEMINI_MODEL to a "
+                    "current alias such as 'gemini-flash-lite-latest'."
+                )
+            return False, f"Gemini API error: {msg[:200]}"
 
 
 # ─────────────────────────────────────────────────────────────────────────

@@ -83,6 +83,17 @@ class Settings(BaseSettings):
     embed_batch: int = 48
     min_chunk_chars: int = 200
 
+    @field_validator("gemini_api_key", "ollama_url", "gemini_model", "ollama_model")
+    @classmethod
+    def _clean_secret(cls, v: str) -> str:
+        """Strip whitespace and wrapping quotes.
+
+        Values pasted into a secrets/env UI routinely arrive as `"AIza..."` or
+        with a trailing newline, which the API then rejects as an invalid key --
+        an error that reads like a bad key rather than a bad paste.
+        """
+        return v.strip().strip('"').strip("'").strip()
+
     @field_validator("generator")
     @classmethod
     def _valid_generator(cls, v: str) -> str:

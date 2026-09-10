@@ -44,6 +44,15 @@ def test_retrieval_summary_reflects_config():
     assert "BM25" in full.retrieval_summary() and "rerank" in full.retrieval_summary()
 
 
+@pytest.mark.parametrize(
+    "raw", ['"AIzaTEST123"', "'AIzaTEST123'", "  AIzaTEST123  ", "AIzaTEST123\n"]
+)
+def test_secrets_are_stripped_of_quotes_and_whitespace(raw):
+    """Values pasted into a secrets UI often arrive quoted or newline-suffixed;
+    the API then rejects them as 'invalid key', which reads like a bad key."""
+    assert Settings(_env_file=None, gemini_api_key=raw).gemini_api_key == "AIzaTEST123"
+
+
 def test_corpus_is_frozen_and_unique():
     ids = [pid for pid, _ in SEED_PAPERS]
     assert len(ids) == len(set(ids)) == CORPUS_SIZE
