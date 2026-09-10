@@ -154,6 +154,10 @@ st.markdown(
       }
       .pdf-btn:hover { border-color:var(--teal); background:var(--teal-soft); text-decoration:none; }
 
+      /* "generating…" placeholder, so the answer bubble is never blank */
+      .gen-wait { color:var(--fg-dim); font-style:italic; margin:0; animation:pulse 1.5s ease-in-out infinite; }
+      @keyframes pulse { 0%,100%{opacity:.45} 50%{opacity:.95} }
+
       /* skeleton while retrieving */
       .sk { height:64px; border-radius:8px; margin-bottom:.6rem;
             background:linear-gradient(90deg,var(--panel) 25%,var(--panel-2) 37%,var(--panel) 63%);
@@ -401,6 +405,9 @@ if prompt:
             )
 
         slot, acc = st.empty(), ""
+        # Never leave this empty: if the first token is slow (cold model, or a
+        # rate-limited call being retried) an empty bubble looks like a hang.
+        slot.markdown('<p class="gen-wait">Generating answer…</p>', unsafe_allow_html=True)
         g0 = time.perf_counter()
         try:
             for tok in rag.generate(rag.build_chat_prompt(prompt, history, result.hits), stream=True):

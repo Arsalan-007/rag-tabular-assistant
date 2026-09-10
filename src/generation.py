@@ -38,9 +38,22 @@ _TRANSIENT = ("429", "500", "502", "503", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "
 _RETRY_HINT = re.compile(r"retry(?:Delay)?[\"']?\s*[:=]?\s*(?:in\s+)?[\"']?(\d+(?:\.\d+)?)\s*s", re.I)
 
 
-def _retry_transient(fn, attempts: int = 5, base_delay: float = 2.0, max_delay: float = 45.0):
-    """Call fn(); on a transient error retry, honouring a server-suggested delay
-    when present, otherwise exponential backoff."""
+def _retry_transient(
+    fn,
+    attempts: int = 4,
+    base_delay: float = 1.5,
+    max_delay: float = 8.0,
+    max_total_wait: float = 20.0,
+):
+    """Call fn(); on a transient error retry with backoff.
+
+    The waiting is deliberately bounded. Gemini's 429s carry a `retryDelay` that
+    can be 30-60s; obeying it across several attempts means sleeping for minutes,
+    which in an interactive app is indistinguishable from a hang. We'd rather
+    fail fast and tell the user than stall silently, so total sleep is capped at
+    `max_total_wait` regardless of what the server asks for.
+    """
+    slept = 0.0
     for i in range(attempts):
         try:
             return fn()
@@ -49,8 +62,11 @@ def _retry_transient(fn, attempts: int = 5, base_delay: float = 2.0, max_delay: 
             if i == attempts - 1 or not any(t in msg for t in _TRANSIENT):
                 raise
             hint = _RETRY_HINT.search(msg)
-            wait = (float(hint.group(1)) + 1.0) if hint else base_delay * (2**i)
-            time.sleep(min(wait, max_delay))
+            wait = min((float(hint.group(1)) + 0.5) if hint else base_delay * (2**i), max_delay)
+            if slept + wait > max_total_wait:
+                raise
+            time.sleep(wait)
+            slept += wait
 
 
 class Generator(Protocol):
@@ -199,7 +215,22 @@ class GeminiGenerator:
                 first = next(it, None)
                 return it, first
 
-            it, first = _retry_transient(_start)
+            try:
+                it, first = _retry_transient(_start)
+            except Exception as e:
+                # The streaming endpoint has its own, tighter free-tier quota:
+                # it 429s while plain generateContent still succeeds. Rather
+                # than fail the turn, fall back to one non-streaming call and
+                # deliver the answer in a single chunk.
+                if not any(t in str(e) for t in _TRANSIENT):
+                    raise
+                resp = client.models.generate_content(
+                    model=self.model, contents=prompt, config=self._config()
+                )
+                if resp.text:
+                    yield resp.text
+                return
+
             if first is not None and first.text:
                 yield first.text
             for chunk in it:
