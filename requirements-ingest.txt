@@ -1,0 +1,6 @@
+# Everything in requirements.txt, plus the packages only `make ingest` needs
+# (fetching arXiv PDFs and parsing them). Not installed on the hosted demo.
+-r requirements.txt
+
+arxiv==4.0.0
+pymupdf==1.28.0

@@ -9,20 +9,28 @@ papers**, reranks them with a cross-encoder, and has an LLM write a **cited**
 answer using only those passages. Every source is shown with its retrieval score
 and which retriever surfaced it.
 
+It's a **conversation**, not one-shot search: a follow-up is condensed into a
+standalone query before retrieval ("does it do that at every step?" → "does
+TabNet select features at every decision step?"), and every turn keeps its own
+citation panel — so you can read an answer, open the papers, and come back to
+dig deeper without losing the thread.
+
 **Live demo:** _(Streamlit Community Cloud link goes here)_
 · **[Evaluation results](eval/results.md)**
 
 ![The Streamlit UI](docs/img/app.png)
 
 ```
-question ─▶ embed (bge-small, query prefix) ─▶ dense search (Chroma)  ─┐
-           tokenize ─────────────────────────▶ BM25 (rank-bm25)       ├─▶ RRF fuse
-                                                                      ▼
-                                       cross-encoder rerank (bge-reranker-base)
-                                                                      ▼
-                              top-k passages ─▶ grounded prompt ─▶ LLM ─▶ cited answer
-                                                                      ▲
-                                            Ollama (local)  ·  Gemini (hosted demo)
+follow-up + history ─▶ condense to a standalone question
+                                  │
+                                  ├─▶ embed (bge-small, query prefix) ─▶ dense search (Chroma) ─┐
+                                  └─▶ tokenize ──────────────────────────▶ BM25 (rank-bm25)    ├─▶ RRF fuse
+                                                                                                ▼
+                                                            cross-encoder rerank (bge-reranker-base)
+                                                                                                ▼
+                                        top-k passages + conversation ─▶ grounded prompt ─▶ LLM ─▶ cited answer
+                                                                                                ▲
+                                                              Ollama (local)  ·  Gemini (hosted demo)
 ```
 
 ---
@@ -35,6 +43,7 @@ question ─▶ embed (bge-small, query prefix) ─▶ dense search (Chroma)  �
 | **Hybrid retrieval (dense + BM25, fused with RRF)** | Dense retrieval blurs exact tokens — method acronyms (`NODE`, `SAINT`), symbols, equation names. BM25 nails those. They fail on different queries, so fusing their *rankings* is safer than either alone. RRF fuses ranks, not scores, so no score calibration between two very differently-scaled retrievers is needed. |
 | **Cross-encoder reranking** ("retrieve wide, rerank narrow") | A bi-encoder (bge-small) embeds query and passage separately; a cross-encoder reads them together and is much more accurate but much slower. So the cheap retriever pulls 20 candidates and the expensive cross-encoder scores only the top 12. This is the **single biggest quality lever** (numbers below). |
 | **Low-confidence guard** | bge-small cosine similarity sits around 0.45–0.55 even for unrelated text and ~0.80+ for on-topic — a threshold near 0.60 cleanly separates them. If the best passage is below it, the UI warns instead of confidently answering from noise. Calibrated against the eval set + out-of-domain probes. |
+| **Follow-ups are condensed, not concatenated** | A follow-up like *"does it do that at every step?"* is meaningless to a retriever. Before retrieving, the last few turns + the new question are condensed into a standalone query; the answer is then grounded in passages fetched for *that*, with the conversation supplied only as context. Prior turns are never re-cited — each turn's passages are renumbered fresh, so `[1]` always means what's in that turn's own source panel. |
 | **Pluggable generator** | One `Generator` interface, two backends: **Ollama** (local, offline, the honest "runs on a laptop" story) and **Gemini** (hosted demo, where a local model isn't available). Nothing else in the codebase imports an LLM SDK. |
 | **Store shipped as an LFS tarball** | Chroma writes bookkeeping to its SQLite file on *every query*, so a committed live directory shows as "modified" after any read. `data/chroma.tar.gz` is the immutable artifact; `store.ensure_store()` extracts it on first use — a fresh clone / CI / the deployed app get a working store in ~1 s, no rebuild. |
 
@@ -45,20 +54,30 @@ question ─▶ embed (bge-small, query prefix) ─▶ dense search (Chroma)  �
 Full report and methodology: **[`eval/results.md`](eval/results.md)** ·
 regenerate with `make eval-ablation`.
 
-39 labeled questions, paper-level ground truth (`src/eval_questions.py`), CPU.
+40 labeled questions, paper-level ground truth (`src/eval_questions.py`), CPU.
 
 | pipeline | hit@1 | hit@3 | hit@5 | hit@10 | MRR | p50 latency |
 |---|---|---|---|---|---|---|
-| dense | 0.821 | 0.897 | 0.949 | 0.974 | 0.875 | 20 ms |
-| hybrid (BM25 + RRF) | 0.846 | 0.949 | 0.949 | 0.974 | 0.897 | 37 ms |
-| dense + rerank | 0.821 | 0.974 | **1.000** | **1.000** | **0.900** | 1.8 s |
-| **hybrid + rerank** (default) | 0.795 | 0.949 | 0.974 | 1.000 | 0.878 | 2.0 s |
+| dense | 0.825 | 0.900 | 0.950 | 0.975 | 0.878 | 19 ms |
+| hybrid (BM25 + RRF) | 0.825 | 0.925 | 0.925 | 0.975 | 0.879 | 42 ms |
+| dense + rerank | 0.800 | 0.950 | 0.975 | **1.000** | 0.880 | 2.2 s |
+| **hybrid + rerank** (default) | 0.775 | 0.925 | 0.950 | **1.000** | 0.859 | 2.3 s |
+| hybrid + rerank + **query rewrite** | **0.850** | 0.950 | 0.950 | 0.975 | **0.899** | 4.6 s |
 
-- **Reranking is decisive** — it takes hit@5 to 1.000 (every question's gold paper in the top 5).
-- **BM25 helps on its own** — hybrid beats dense at MRR (0.897 vs 0.875) and hit@1.
-- **Under reranking, hybrid vs dense is within noise** on 39 questions (~1 question per point). Hybrid is kept on by default as a safety net for exact-term queries the eval under-samples; `dense + rerank` is a legitimate, slightly cheaper choice.
-- **Guard rail:** 4/4 out-of-domain probes correctly flagged low-confidence, in every configuration.
-- Answer faithfulness (LLM-as-judge) is reported **separately** — see `eval/results.md`.
+- **Reranking is what buys depth** — it takes hit@10 to 1.000: every question's gold paper is retrievable in the top 10.
+- **Query rewrite is the best-scoring configuration** (+3 questions at hit@1, MRR 0.899). It's **off by default** only because it costs an LLM call per turn; it's a one-click toggle in the UI.
+- **Guard rail:** 4/4 out-of-domain probes correctly flagged low-confidence, in every configuration — including with rewriting on, because the guard deliberately judges the *original* query, not the LLM's paraphrases.
+- Answer faithfulness (LLM-as-judge) scores 5.00/5, and `eval/results.md` explains at length why that number is **not** the reassurance it looks like.
+
+### A negative result worth keeping
+
+I also tried capping chunks-per-paper in the fused pool and reranking all 20
+candidates instead of 12, to fix one oblique query that missed. The ablation
+said no: hit@1 fell 0.795 → 0.725 and MRR 0.878 → 0.820, and the target query
+*still* missed. Both are reverted to config knobs that default to off, with the
+measurement recorded in `src/config.py`. The remaining fix for that class of
+query is section-aware chunking — the paper states its three findings as
+section headings that a 900-character window splits apart.
 
 ---
 
@@ -67,6 +86,8 @@ regenerate with `make eval-ablation`.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt && pip install -e .
+# requirements.txt      = serving only (what the deployed demo installs; CPU torch)
+# requirements-ingest.txt = + arxiv/pymupdf, needed only to rebuild the corpus
 
 make store        # extract the shipped vector store (data/chroma.tar.gz)
 make app          # Streamlit UI at http://localhost:8501
@@ -97,6 +118,7 @@ make eval-judge       # + LLM-as-judge answer faithfulness (needs a generator)
 make ingest           # rebuild the store from src/seed_papers.py, then repack the tarball
 make test             # pytest
 make lint             # ruff
+make shots            # drive the running app in a browser (e2e check + screenshots)
 ```
 
 ---
@@ -105,18 +127,21 @@ make lint             # ruff
 
 ```
 src/
-  config.py        pydantic-settings: every tunable, env-overridable
-  seed_papers.py   the frozen 41-paper corpus (+ known non-arXiv gaps)
-  ingest.py        fetch → parse (strip refs) → chunk → embed → Chroma
-  store.py         tarball ⇄ live-directory packaging
-  retrieval.py     Retriever: dense · BM25 · RRF · cross-encoder rerank → RetrievalResult
-  generation.py    Generator protocol · OllamaGenerator · GeminiGenerator
-  rag.py           thin facade: build_prompt · generate · answer · health_check
-  evaluate.py      hit-rate@k / MRR / ablation / guard rail / LLM-judge
-  eval_questions.py 39 labeled questions + out-of-domain probes
-  app.py           Streamlit UI
-eval/results.md    committed evaluation report
-tests/             36 tests · ruff clean · CI on every push
+  config.py         pydantic-settings: every tunable, env-overridable
+  seed_papers.py    the frozen 41-paper corpus (+ known non-arXiv gaps)
+  ingest.py         fetch → parse (strip refs) → chunk → embed → Chroma
+  store.py          tarball ⇄ live-directory packaging
+  retrieval.py      Retriever: dense · BM25 · RRF · cross-encoder rerank → RetrievalResult
+  query_rewrite.py  optional multi-query expansion (LLM), RRF-fused
+  generation.py     Generator protocol · OllamaGenerator · GeminiGenerator
+  rag.py            facade: condense_question · build_chat_prompt · answer_chat
+  evaluate.py       hit-rate@k / MRR / ablation / guard rail / LLM-judge
+  eval_questions.py 40 labeled questions + out-of-domain probes
+  app.py            Streamlit chat UI
+.streamlit/config.toml  the dark theme (Streamlit's own, not CSS patches)
+scripts/shoot_ui.py     drives the real UI in a browser: e2e check + screenshots
+eval/results.md         committed evaluation report
+tests/                  42 tests · ruff clean · CI on every push
 ```
 
 ## Corpus

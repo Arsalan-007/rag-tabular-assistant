@@ -1,5 +1,7 @@
--r requirements.txt
+# Full local setup: serving + ingestion + test/lint tooling.
+-r requirements-ingest.txt
 
 pytest==9.1.1
 pytest-cov==7.1.0
 ruff==0.16.6
+playwright==1.62.0   # UI screenshots / end-to-end checks (scripts/shoot_ui.py)

@@ -1,16 +1,19 @@
 .DEFAULT_GOAL := help
 PY ?= python
 
-.PHONY: help install install-dev store ingest app eval eval-ablation eval-judge lint fmt test cov clean
+.PHONY: help install install-ingest install-dev store ingest app shots eval eval-ablation eval-judge lint fmt test cov clean
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-install:  ## Install runtime dependencies
+install:  ## Serving deps only (what the deployed demo installs)
 	$(PY) -m pip install -r requirements.txt
 
-install-dev:  ## Install runtime + dev dependencies, editable package
+install-ingest:  ## Serving + ingestion deps (needed for `make ingest`)
+	$(PY) -m pip install -r requirements-ingest.txt
+
+install-dev:  ## Everything + test/lint tooling, editable package
 	$(PY) -m pip install -r requirements-dev.txt && $(PY) -m pip install -e .
 
 store:  ## Extract the shipped vector store (data/chroma.tar.gz -> data/chroma/)
@@ -21,6 +24,9 @@ ingest:  ## Rebuild the vector store from the frozen corpus, then repack the tar
 
 app:  ## Launch the Streamlit UI
 	$(PY) -m streamlit run src/app.py
+
+shots:  ## Drive the running app in a browser: end-to-end check + screenshots
+	$(PY) scripts/shoot_ui.py
 
 eval:  ## Retrieval metrics (hit-rate@k, MRR) for the configured pipeline
 	$(PY) src/evaluate.py

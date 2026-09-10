@@ -1,15 +1,20 @@
-# Runtime dependencies, pinned to tested versions.
-# Dev/test tooling lives in requirements-dev.txt.
+# Serving dependencies — what the deployed demo needs. Streamlit Community
+# Cloud installs from this file.
 #
-# Streamlit Community Cloud installs from this file. torch is pulled in
-# (CPU build) by sentence-transformers; no GPU is used anywhere.
+# Ingestion-only packages (arxiv, pymupdf) are NOT here; they live in
+# requirements-ingest.txt. The hosted app never ingests — the vector store
+# ships prebuilt as data/chroma.tar.gz (Git LFS) and is extracted at boot.
+#
+# torch is pinned to a CPU wheel on purpose: PyPI's default torch is the CUDA
+# build (~1.2 GB) which blows the free tier's build and disk budget. Nothing
+# here uses a GPU.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.9.1+cpu
 
-arxiv==4.0.0
-pymupdf==1.28.0
-sentence-transformers==5.6.0
-chromadb==1.5.9
-rank-bm25==0.2.2
 streamlit==1.63.0
+chromadb==1.5.9
+sentence-transformers==5.6.0
+rank-bm25==0.2.2
+google-genai==2.22.0
 python-dotenv==1.0.0
 pydantic-settings==2.12.0
-google-genai==2.22.0
